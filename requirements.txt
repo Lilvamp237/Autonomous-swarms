@@ -1,0 +1,13 @@
+# Simulation & Traffic Control
+eclipse-sumo==1.26.0
+traci==1.26.0
+
+# Database & Memory Engine
+neo4j==6.1.0
+
+# Data Analysis & Plotting (For Person 4)
+pandas
+matplotlib
+
+# Notebook Support
+ipykernel
