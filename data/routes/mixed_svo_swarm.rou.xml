@@ -1,0 +1,13 @@
+<routes>
+    <vType id="swarm_car" accel="2.6" decel="4.5" sigma="0.5" length="5" minGap="2.5" maxSpeed="13.89" color="1,0,0"/>
+
+    <route id="north_to_south" edges="-E0 E2"/>
+    <route id="south_to_north" edges="-E2 E0"/>
+    <route id="east_to_west"   edges="-E1 E3"/>
+    <route id="west_to_east"   edges="-E3 E1"/>
+
+    <flow id="f_n" begin="0" end="3600" number="15" type="swarm_car" route="north_to_south"/>
+    <flow id="f_s" begin="0" end="3600" number="15" type="swarm_car" route="south_to_north"/>
+    <flow id="f_e" begin="0" end="3600" number="10" type="swarm_car" route="east_to_west"/>
+    <flow id="f_w" begin="0" end="3600" number="10" type="swarm_car" route="west_to_east"/>
+</routes>

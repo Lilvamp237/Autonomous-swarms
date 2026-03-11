@@ -1,0 +1,13 @@
+<configuration>
+    <input>
+        <net-file value="networks/urban_intersection.net.xml"/>
+        <route-files value="routes/mixed_svo_swarm.rou.xml"/>
+    </input>
+    <time>
+        <begin value="0"/>
+        <end value="3600"/>
+    </time>
+    <gui_only>
+        <start value="true"/>
+    </gui_only>
+</configuration>
