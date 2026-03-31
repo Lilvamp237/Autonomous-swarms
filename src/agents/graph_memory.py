@@ -3,13 +3,20 @@ import json
 
 class SocialMemoryEngine:
     def __init__(self, uri, user, password):
-        """Initialize the Neo4j connection."""
+        """Initialize the Neo4j connection with persistent session."""
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
+        self.session = self.driver.session()  # Persistent session for performance
         self._setup_constraints()
 
     def close(self):
-        """Close the database connection."""
-        self.driver.close()
+        """Close the database connection and session."""
+        try:
+            if self.session:
+                self.session.close()
+        except Exception as e:
+            print(f"Warning: Error closing session: {e}")
+        finally:
+            self.driver.close()
 
     def _setup_constraints(self):
         """Ensure vehicle IDs are unique in the graph."""
@@ -17,52 +24,63 @@ class SocialMemoryEngine:
         CREATE CONSTRAINT vehicle_id IF NOT EXISTS 
         FOR (v:Vehicle) REQUIRE v.id IS UNIQUE;
         """
-        with self.driver.session() as session:
-            session.run(query)
+        try:
+            self.session.run(query)
             print("Graph constraints verified.")
+        except Exception as e:
+            print(f"Warning: Constraint setup issue (may already exist): {e}")
 
     def log_interaction(self, interaction_json):
         """
         Takes JSON data (e.g., Vehicle A yielded to Vehicle B) 
         and updates the graph database in real-time.
+        Uses persistent session for better performance in simulation loops.
         """
-        # Parse the JSON if it's a string, otherwise assume it's a dict
-        data = json.loads(interaction_json) if isinstance(interaction_json, str) else interaction_json
-        
-        ego_id = data.get("ego_id")
-        target_id = data.get("target_id")
-        ego_svo = data.get("ego_svo_angle", 0.0)
-        target_svo = data.get("target_svo_angle", 0.0)
-        distance = data.get("distance", 0.0)
-        yielded = 1 if data.get("yielded") else 0 # Convert boolean to int
+        try:
+            # Parse the JSON if it's a string, otherwise assume it's a dict
+            data = json.loads(interaction_json) if isinstance(interaction_json, str) else interaction_json
+            
+            ego_id = data.get("ego_id")
+            target_id = data.get("target_id")
+            ego_svo = data.get("ego_svo_angle", 0.0)
+            target_svo = data.get("target_svo_angle", 0.0)
+            distance = data.get("distance", 0.0)
+            yielded = 1 if data.get("yielded") else 0 # Convert boolean to int
 
-        query = """
-        // 1. Upsert Ego Vehicle
-        MERGE (ego:Vehicle {id: $ego_id})
-        ON CREATE SET ego.created_at = timestamp()
-        SET ego.current_svo_angle = $ego_svo
+            query = """
+            // 1. Upsert Ego Vehicle
+            MERGE (ego:Vehicle {id: $ego_id})
+            ON CREATE SET ego.created_at = timestamp()
+            SET ego.current_svo_angle = $ego_svo
 
-        // 2. Upsert Target Vehicle
-        MERGE (target:Vehicle {id: $target_id})
-        ON CREATE SET target.created_at = timestamp()
-        SET target.current_svo_angle = $target_svo
+            // 2. Upsert Target Vehicle
+            MERGE (target:Vehicle {id: $target_id})
+            ON CREATE SET target.created_at = timestamp()
+            SET target.current_svo_angle = $target_svo
 
-        // 3. Create or Update the Interaction Relationship
-        MERGE (ego)-[r:INTERACTED_WITH]->(target)
-        ON CREATE SET 
-            r.first_seen = timestamp(), 
-            r.yield_count = $yielded
-        ON MATCH SET 
-            r.last_seen = timestamp(), 
-            r.distance = $distance, 
-            r.yield_count = r.yield_count + $yielded
-        """
-        
-        with self.driver.session() as session:
-            session.run(query, ego_id=ego_id, target_id=target_id, 
-                        ego_svo=ego_svo, target_svo=target_svo, 
-                        distance=distance, yielded=yielded)
-            print(f"Logged interaction: {ego_id} -> {target_id} (Yielded: {bool(yielded)})")
+            // 3. Create or Update the Interaction Relationship
+            MERGE (ego)-[r:INTERACTED_WITH]->(target)
+            ON CREATE SET 
+                r.first_seen = timestamp(), 
+                r.yield_count = $yielded,
+                r.interaction_count = 1
+            ON MATCH SET 
+                r.last_seen = timestamp(), 
+                r.distance = $distance, 
+                r.yield_count = r.yield_count + $yielded,
+                r.interaction_count = r.interaction_count + 1
+            """
+            
+            # Use persistent session instead of creating new one each time
+            self.session.run(query, ego_id=ego_id, target_id=target_id, 
+                            ego_svo=ego_svo, target_svo=target_svo, 
+                            distance=distance, yielded=yielded)
+            
+            # Reduce logging verbosity for performance (can be removed in production)
+            # print(f"Logged: {ego_id} -> {target_id} @ {distance}m")
+            
+        except Exception as e:
+            print(f"Error logging interaction {ego_id} -> {target_id}: {e}")
 
     def get_historical_svo(self, ego_id):
         """
