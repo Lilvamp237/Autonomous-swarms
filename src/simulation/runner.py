@@ -38,6 +38,12 @@ def run_simulation():
 
             vehicle_ids = traci.vehicle.getIDList()
 
+            # Print vehicle telemetry for monitoring
+            for veh_id in vehicle_ids:
+                pos = traci.vehicle.getPosition(veh_id)
+                speed = traci.vehicle.getSpeed(veh_id)
+                print(f"Step {step}: Veh {veh_id} at X={pos[0]:.2f}, Y={pos[1]:.2f} Speed={speed:.2f}")
+
             # Set up context subscriptions for each vehicle (sensor data)
             # This tells TraCI to automatically track nearby vehicles within 300m
             for veh_id in vehicle_ids:
