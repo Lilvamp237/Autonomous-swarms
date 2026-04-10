@@ -3,6 +3,7 @@ import sys
 import math
 import traci
 import numpy as np
+import random
 
 # 1. Set up SUMO paths
 if 'SUMO_HOME' in os.environ:
@@ -25,8 +26,8 @@ DB_USER = "neo4j"
 DB_PASS = "Vehicles123"
 
 # Sensor configuration (200-300m range)
-SENSOR_RADIUS_MIN = 200.0  # meters
-SENSOR_RADIUS_MAX = 300.0  # meters
+SENSOR_RADIUS_MIN = 10.0  # meters
+SENSOR_RADIUS_MAX = 150.0  # meters
 
 
 def run_simulation():
@@ -78,9 +79,20 @@ def run_simulation():
             # Create SVOAgent instances for any new vehicles
             for veh_id in vehicle_ids:
                 if veh_id not in active_agents:
-                    # Instantiate new SVOAgent with default phi (π/4, balanced)
-                    active_agents[veh_id] = SVOAgent(veh_id)
-                    print(f"[Runner] New agent created for vehicle: {veh_id}")
+                    # 1. Create the agent
+                    new_agent = SVOAgent(veh_id)
+                    
+                    # 2. Randomly assign a personality (SVO Angle in degrees)
+                    # 0.0 = Pure Selfish (Aggressive)
+                    # 45.0 = Prosocial (Balanced)
+                    # 90.0 = Pure Altruistic (Overly polite)
+                    random_personality = random.choice([0.0, 45.0, 90.0])
+                    new_agent.phi = random_personality 
+                    #new_agent.phi = 0.0  # Force pure selfish behavior
+                    
+                    # 3. Add to the swarm
+                    active_agents[veh_id] = new_agent
+                    print(f"[Runner] New agent: {veh_id} | Assigned SVO: {random_personality}°")
             
             # Remove agents for vehicles that have exited the simulation
             exited_agents = [aid for aid in active_agents if aid not in vehicle_ids]
@@ -129,7 +141,7 @@ def run_simulation():
                         (ego_pos[1] - target_pos[1]) ** 2
                     )
                     
-                    # Filter by sensor range (200-300m for intersection detection)
+                    # Filter by sensor range (150m for intersection detection)
                     if distance <= SENSOR_RADIUS_MAX:
                         # Retrieve or create agents
                         ego_agent = active_agents[ego_id]
@@ -176,6 +188,14 @@ def run_simulation():
                         
                         # Extract decision: True if ego yields, False if ego proceeds
                         yielded = nash_result["vehicle_A_yields"]
+
+                        # ===== ACTUALLY CONTROL THE PHYSICAL CAR =====
+                        if yielded:
+                            # Tell the car to brake to 0 m/s over the next 2 seconds
+                            traci.vehicle.slowDown(ego_id, 5.0, 2.0)
+                        else:
+                            # Tell the car to proceed (hand control back to SUMO's default speed)
+                            traci.vehicle.setSpeed(ego_id, -1.0)
                         
                         # ===== GRAPH MEMORY INTEGRATION =====
                         # Build interaction dictionary with real agent properties
