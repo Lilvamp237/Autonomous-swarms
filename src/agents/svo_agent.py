@@ -10,7 +10,7 @@ Depends: irl_estimator.py must be in the same directory
 """
 
 import numpy as np
-from irl_estimator import estimate_phi_irl
+from .irl_estimator import estimate_phi_irl
 
 
 class SVOAgent:
