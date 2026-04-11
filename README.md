@@ -2,7 +2,7 @@
 
 **Dynamic Social Value Orientation in Autonomous Vehicle Swarms: A Framework for Collective Urban Intelligence**
 
-This repository contains the simulation environment and decentralized multi-agent reinforcement learning (MARL) architecture for modeling Social Value Orientation (SVO) in autonomous vehicle swarms. By integrating microscopic traffic simulation (SUMO) with a graph-based social memory engine (Neo4j), this project evaluates how dynamically shifting an agent's SVO angle ($\phi$) resolves system-wide social dilemmas in unsignalized urban intersections.
+This repository contains the simulation environment and decentralized multi-agent reinforcement learning architecture for modeling Social Value Orientation (SVO) in autonomous vehicle swarms. By integrating microscopic traffic simulation (SUMO) with a graph-based social memory engine (Neo4j), this project evaluates how dynamically shifting an agent's SVO angle ($\phi$) resolves system-wide social dilemmas in unsignalized urban intersections.
 
 ## 🛠 Tech Stack
 * **Language:** Python 3.10
