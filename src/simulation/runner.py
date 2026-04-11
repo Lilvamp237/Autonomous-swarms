@@ -10,7 +10,15 @@ if 'SUMO_HOME' in os.environ:
 else:
     sys.exit("Please declare environment variable 'SUMO_HOME'")
 
-from src.agents.graph_memory import SocialMemoryEngine
+# Conditionally import Neo4j-dependent module
+try:
+    from src.agents.graph_memory import SocialMemoryEngine
+    HAS_NEO4J = True
+except ModuleNotFoundError:
+    HAS_NEO4J = False
+    SocialMemoryEngine = None
+
+from src.metrics import logger
 
 # SUMO config path (relative to project root)
 SUMO_CONFIG = "data/simulation.sumocfg"
@@ -27,7 +35,21 @@ SENSOR_RADIUS_MAX = 300.0  # meters
 
 def run_simulation():
     # Initialize Neo4j memory engine before starting the simulation
-    memory = SocialMemoryEngine(DB_URI, DB_USER, DB_PASS)
+    memory = None
+    if HAS_NEO4J:
+        try:
+            memory = SocialMemoryEngine(DB_URI, DB_USER, DB_PASS)
+            print("[INFO] Neo4j memory engine initialized")
+        except Exception as e:
+            print(f"[WARNING] Neo4j connection failed: {e}")
+            print("[INFO] Continuing without Neo4j (logger will still work)")
+            memory = None
+    else:
+        print("[WARNING] Neo4j module not installed")
+        print("[INFO] Continuing without Neo4j (logger will still work)")
+    
+    # Initialize the CSV logger
+    logger.initialise_logger()
 
     try:
         traci.start(["sumo-gui", "-c", SUMO_CONFIG])
@@ -93,7 +115,19 @@ def run_simulation():
                             "yielded":          True,   # placeholder
                         }
 
-                        memory.log_interaction(interaction)
+                        memory.log_interaction(interaction) if memory else None
+
+            # Log simulation metrics to CSV at each tick
+            logger.log_tick(
+                tick                 = step,
+                swarm_mode           = "selfish",
+                intersection_delay_s = traci.simulation.getWaitingTime(),
+                throughput_vehicles  = traci.simulation.getArrivedNumber(),
+                collisions           = traci.simulation.getCollidingVehiclesNumber(),
+                mean_speed_ms        = sum(
+                    traci.vehicle.getSpeed(veh_id) for veh_id in vehicle_ids
+                ) / len(vehicle_ids) if vehicle_ids else 0.0
+            )
 
             step += 1
             if step > 1000:
@@ -104,7 +138,8 @@ def run_simulation():
         raise
     finally:
         traci.close()
-        memory.close()
+        if memory:
+            memory.close()
 
 
 if __name__ == "__main__":

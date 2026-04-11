@@ -15,7 +15,12 @@ else:
 # Import integrated modules
 from src.agents.svo_agent import SVOAgent
 from src.metrics.logger import initialise_logger, log_tick
-from src.agents.graph_memory import SocialMemoryEngine
+try:
+    from src.agents.graph_memory import SocialMemoryEngine
+    HAS_NEO4J = True
+except ModuleNotFoundError:
+    HAS_NEO4J = False
+    SocialMemoryEngine = None
 
 # Path to SUMO configuration
 SUMO_CONFIG = "data/simulation.sumocfg"
@@ -28,6 +33,11 @@ DB_PASS = "Vehicles123"
 # Sensor configuration (200-300m range)
 SENSOR_RADIUS_MIN = 10.0  # meters
 SENSOR_RADIUS_MAX = 150.0  # meters
+
+# Swarm mode controls both agent SVO and log labeling
+# Options: "selfish", "prosocial", "mixed"
+SWARM_MODE = "selfish"
+LOG_PATH = f"data/metrics/simulation_log_{SWARM_MODE}.csv"
 
 
 def run_simulation():
@@ -48,12 +58,20 @@ def run_simulation():
     
     # ========== PRE-SIMULATION INITIALIZATION ==========
     
-    # Initialize Neo4j memory engine
-    memory = SocialMemoryEngine(DB_URI, DB_USER, DB_PASS)
-    print("[Runner] Graph memory engine initialized")
+    # Initialize Neo4j memory engine (optional)
+    memory = None
+    if HAS_NEO4J:
+        try:
+            memory = SocialMemoryEngine(DB_URI, DB_USER, DB_PASS)
+            print("[Runner] Graph memory engine initialized")
+        except Exception as e:
+            print(f"[Runner] Graph memory unavailable: {e}")
+            print("[Runner] Continuing without Neo4j")
+    else:
+        print("[Runner] Neo4j module not installed; continuing without graph memory")
     
     # Initialize telemetry CSV logger
-    log_path = initialise_logger()
+    log_path = initialise_logger(LOG_PATH)
     print(f"[Runner] Telemetry logger initialized at: {log_path}")
     
     # Dictionary to track SVOAgent instances for all active vehicles
@@ -82,17 +100,23 @@ def run_simulation():
                     # 1. Create the agent
                     new_agent = SVOAgent(veh_id)
                     
-                    # 2. Randomly assign a personality (SVO Angle in degrees)
+                    # 2. Assign SVO based on swarm mode
                     # 0.0 = Pure Selfish (Aggressive)
                     # 45.0 = Prosocial (Balanced)
                     # 90.0 = Pure Altruistic (Overly polite)
-                    random_personality = random.choice([0.0, 45.0, 90.0])
-                    new_agent.phi = random_personality 
-                    #new_agent.phi = 0.0  # Force pure selfish behavior
+                    if SWARM_MODE == "mixed":
+                        assigned_phi = random.choice([0.0, 45.0, 90.0])
+                    elif SWARM_MODE == "selfish":
+                        assigned_phi = 0.0
+                    elif SWARM_MODE == "prosocial":
+                        assigned_phi = 45.0
+                    else:
+                        assigned_phi = 0.0
+                    new_agent.phi = assigned_phi
                     
                     # 3. Add to the swarm
                     active_agents[veh_id] = new_agent
-                    print(f"[Runner] New agent: {veh_id} | Assigned SVO: {random_personality}°")
+                    print(f"[Runner] New agent: {veh_id} | Assigned SVO: {assigned_phi}°")
             
             # Remove agents for vehicles that have exited the simulation
             exited_agents = [aid for aid in active_agents if aid not in vehicle_ids]
@@ -208,8 +232,9 @@ def run_simulation():
                             "yielded": bool(yielded),
                         }
                         
-                        # Log interaction to graph database
-                        memory.log_interaction(interaction)
+                        # Log interaction to graph database (if available)
+                        if memory:
+                            memory.log_interaction(interaction)
 
             # ========== TELEMETRY EXTRACTION & LOGGING ==========
             
@@ -247,7 +272,7 @@ def run_simulation():
             # Log all metrics to CSV
             log_tick(
                 tick=step,
-                swarm_mode="mixed_swarm",
+                swarm_mode=SWARM_MODE,
                 intersection_delay_s=intersection_delay_s,
                 throughput_vehicles=throughput_vehicles,
                 collisions=collisions,
@@ -265,8 +290,9 @@ def run_simulation():
         # ========== CLEANUP ==========
         
         # Close graph database connection
-        memory.close()
-        print("[Runner] Graph memory connection closed")
+        if memory:
+            memory.close()
+            print("[Runner] Graph memory connection closed")
         
         # Close SUMO TraCI connection
         traci.close()
